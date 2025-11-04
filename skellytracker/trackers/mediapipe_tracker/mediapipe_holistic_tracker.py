@@ -35,6 +35,8 @@ class MediapipeHolisticTracker(BaseTracker):
             static_image_mode=static_image_mode,
             smooth_landmarks=smooth_landmarks,
         )
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+        self.mp_pose = mp.solutions.pose
 
     def process_image(self, image: np.ndarray, **kwargs) -> Dict[str, TrackedObject]:
         # Convert the image to RGB
@@ -67,26 +69,67 @@ class MediapipeHolisticTracker(BaseTracker):
         self, image: np.ndarray, tracked_objects: Dict[str, TrackedObject], **kwargs
     ) -> np.ndarray:
         annotated_image = image.copy()
+
+        # Set the drawing styles
+        # Pose
+        pose_landmark_style  = self.mp_drawing_styles.get_default_pose_landmarks_style()
+        pose_connection_style = self.mp_drawing.DrawingSpec(
+            color=(177,171,95), # BGR convention
+            thickness=2
+        )
+        # Iterate over all defined pose landmarks to set left-right styles
+        for landmark_enum in self.mp_pose.PoseLandmark:
+            pose_landmark_style[landmark_enum].circle_radius = 2
+            pose_landmark_style[landmark_enum].thickness = 2
+            name = landmark_enum.name.lower()
+            if "left" in name:
+                pose_landmark_style[landmark_enum].color = (255, 0, 0)  # blue BGR convention
+            elif "right" in name:
+                pose_landmark_style[landmark_enum].color = (0, 0, 255)  # red BGR convention
+            else:
+                pose_landmark_style[landmark_enum].color = (255, 255, 255)  # white for central
+
+        # Hands
+        hands_landmark_style = self.mp_drawing_styles.get_default_hand_landmarks_style()
+        # Set circle radius of hand landmarks
+        for landmark, spec in hands_landmark_style.items():
+            spec.circle_radius = 3
+
+        # Face
+        face_mesh_tesselation_style = self.mp_drawing_styles.get_default_face_mesh_tesselation_style()
+        # Change style of face mesh tesselation
+        face_mesh_tesselation_style.color = (255, 255, 255)
+        face_mesh_tesselation_style.thickness = 0
+        face_mesh_tesselation_style.circle_radius = 1
+
+        face_mesh_contours_style = self.mp_drawing_styles.get_default_face_mesh_contours_style(1)
+            
         # Draw the pose, face, and hand landmarks on the image
         self.mp_drawing.draw_landmarks(
             annotated_image,
             tracked_objects["pose_landmarks"].extra["landmarks"],
             self.mp_holistic.POSE_CONNECTIONS,
+            landmark_drawing_spec=pose_landmark_style,
+            connection_drawing_spec=pose_connection_style,
         )
         self.mp_drawing.draw_landmarks(
             annotated_image,
             tracked_objects["face_landmarks"].extra["landmarks"],
-            self.mp_holistic.FACEMESH_TESSELATION,
+            self.mp_holistic.FACEMESH_CONTOURS,
+            landmark_drawing_spec=face_mesh_tesselation_style,
+            connection_drawing_spec=face_mesh_contours_style,
         )
         self.mp_drawing.draw_landmarks(
             annotated_image,
             tracked_objects["left_hand_landmarks"].extra["landmarks"],
             self.mp_holistic.HAND_CONNECTIONS,
+            landmark_drawing_spec=hands_landmark_style,
         )
         self.mp_drawing.draw_landmarks(
             annotated_image,
             tracked_objects["right_hand_landmarks"].extra["landmarks"],
             self.mp_holistic.HAND_CONNECTIONS,
+            landmark_drawing_spec=hands_landmark_style,
         )
 
         return annotated_image
