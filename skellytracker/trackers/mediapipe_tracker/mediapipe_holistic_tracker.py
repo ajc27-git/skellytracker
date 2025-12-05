@@ -92,7 +92,7 @@ class MediapipeHolisticTracker(BaseTracker):
         # Hands
         hands_landmark_style = self.mp_drawing_styles.get_default_hand_landmarks_style()
         # Set circle radius of hand landmarks
-        for landmark, spec in hands_landmark_style.items():
+        for spec in hands_landmark_style.values():
             spec.circle_radius = 3
 
         # Face
