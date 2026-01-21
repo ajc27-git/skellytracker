@@ -443,3 +443,6 @@ if __name__ == "__main__":
     
     tracker = ColorTracker(marker_configs=marker_configs)
     tracker.demo()
+
+
+__all__ = ["ColorTracker", "ColorMarkerConfig", "ColorPatch"]
