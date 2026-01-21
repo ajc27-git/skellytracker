@@ -42,6 +42,36 @@ class ColorTracker(BaseTracker):
             marker_configs: List of configurations for up to 3 markers
             use_morphological_ops: Whether to use morphological operations to clean masks
         """
+
+        # DEBUG: Log what colors we received
+        for i, config in enumerate(marker_configs):
+            if config.enabled:
+                logger.debug(f"DEBUG - Marker {i} config:")
+                logger.debug(f"  Name: {config.marker_name}")
+                logger.debug(f"  Target BGR from config: {config.target_color_bgr}")
+                logger.debug(f"  Enabled: {config.enabled}")
+                logger.debug(f"  Tolerance: {config.color_tolerance}")
+                
+                # Convert and show HSV
+                target_color_hsv = cv2.cvtColor(
+                    np.uint8([[config.target_color_bgr]]), cv2.COLOR_BGR2HSV
+                )[0][0]
+                logger.debug(f"  Target HSV: {target_color_hsv}")
+                
+                # Calculate and show bounds
+                lower_bound = np.array([
+                    max(0, target_color_hsv[0] - config.color_tolerance),
+                    max(0, target_color_hsv[1] - config.color_tolerance),
+                    max(0, target_color_hsv[2] - config.color_tolerance)
+                ])
+                upper_bound = np.array([
+                    min(179, target_color_hsv[0] + config.color_tolerance),
+                    min(255, target_color_hsv[1] + config.color_tolerance),
+                    min(255, target_color_hsv[2] + config.color_tolerance)
+                ])
+                logger.debug(f"  Lower bound: {lower_bound}")
+                logger.debug(f"  Upper bound: {upper_bound}")
+
         # Default configuration for 3 markers if none provided
         if marker_configs is None:
             marker_configs = [
