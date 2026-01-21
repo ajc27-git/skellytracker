@@ -15,7 +15,7 @@ class ColorTrackerModelInfo(ModelInfo):
     ):
         super().__init__(
             tracker_name="ColorTracker",
-            tracker=ColorTracker,  # The tracker class
+            tracker=ColorTracker,
             model_name="color_tracker",
             marker_configs=marker_configs,
             use_morphological_ops=use_morphological_ops,
