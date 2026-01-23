@@ -16,7 +16,9 @@ class ColorMarkerConfig(BaseModel):
     """Configuration for a single color marker."""
     enabled: bool = False
     target_color_bgr: Tuple[int, int, int] = (0, 0, 255)  # Default: Red
-    color_tolerance: int = 30
+    hue_tolerance: int = 20
+    saturation_tolerance: int = 70
+    value_tolerance: int = 70
     marker_name: str = "marker_1"
     min_contour_area: int = 100
 
@@ -50,7 +52,9 @@ class ColorTracker(BaseTracker):
                 logger.debug(f"  Name: {config.marker_name}")
                 logger.debug(f"  Target BGR from config: {config.target_color_bgr}")
                 logger.debug(f"  Enabled: {config.enabled}")
-                logger.debug(f"  Tolerance: {config.color_tolerance}")
+                logger.debug(f"  Hue Tolerance: {config.hue_tolerance}")
+                logger.debug(f"  Saturation Tolerance: {config.saturation_tolerance}")
+                logger.debug(f"  Value Tolerance: {config.value_tolerance}")
                 
                 # Convert and show HSV
                 target_color_hsv = cv2.cvtColor(
@@ -60,14 +64,14 @@ class ColorTracker(BaseTracker):
                 
                 # Calculate and show bounds
                 lower_bound = np.array([
-                    max(0, target_color_hsv[0] - config.color_tolerance),
-                    max(0, target_color_hsv[1] - config.color_tolerance),
-                    max(0, target_color_hsv[2] - config.color_tolerance)
+                    max(0, target_color_hsv[0] - config.hue_tolerance),
+                    max(0, target_color_hsv[1] - config.saturation_tolerance),
+                    max(0, target_color_hsv[2] - config.value_tolerance)
                 ])
                 upper_bound = np.array([
-                    min(179, target_color_hsv[0] + config.color_tolerance),
-                    min(255, target_color_hsv[1] + config.color_tolerance),
-                    min(255, target_color_hsv[2] + config.color_tolerance)
+                    min(179, target_color_hsv[0] + config.hue_tolerance),
+                    min(255, target_color_hsv[1] + config.saturation_tolerance),
+                    min(255, target_color_hsv[2] + config.value_tolerance)
                 ])
                 logger.debug(f"  Lower bound: {lower_bound}")
                 logger.debug(f"  Upper bound: {upper_bound}")
@@ -78,21 +82,27 @@ class ColorTracker(BaseTracker):
                 ColorMarkerConfig(
                     enabled=True,
                     target_color_bgr=(0, 0, 255),  # Red
-                    color_tolerance=30,
+                    hue_tolerance=20,
+                    saturation_tolerance=70,
+                    value_tolerance=70,
                     marker_name="red_marker",
                     min_contour_area=100,
                 ),
                 ColorMarkerConfig(
                     enabled=False,
                     target_color_bgr=(0, 255, 0),  # Green
-                    color_tolerance=30,
+                    hue_tolerance=20,
+                    saturation_tolerance=70,
+                    value_tolerance=70,
                     marker_name="green_marker",
                     min_contour_area=100,
                 ),
                 ColorMarkerConfig(
                     enabled=False,
                     target_color_bgr=(255, 0, 0),  # Blue
-                    color_tolerance=30,
+                    hue_tolerance=20,
+                    saturation_tolerance=70,
+                    value_tolerance=70,
                     marker_name="blue_marker",
                     min_contour_area=100,
                 ),
@@ -125,15 +135,15 @@ class ColorTracker(BaseTracker):
                 )[0][0]
                 
                 lower_bound = np.array([
-                    max(0, target_color_hsv[0] - config.color_tolerance),
-                    max(0, target_color_hsv[1] - config.color_tolerance),
-                    max(0, target_color_hsv[2] - config.color_tolerance)
+                    max(0, target_color_hsv[0] - config.hue_tolerance),
+                    max(0, target_color_hsv[1] - config.saturation_tolerance),
+                    max(0, target_color_hsv[2] - config.value_tolerance)
                 ])
                 
                 upper_bound = np.array([
-                    min(179, target_color_hsv[0] + config.color_tolerance),
-                    min(255, target_color_hsv[1] + config.color_tolerance),
-                    min(255, target_color_hsv[2] + config.color_tolerance)
+                    min(179, target_color_hsv[0] + config.hue_tolerance),
+                    min(255, target_color_hsv[1] + config.saturation_tolerance),
+                    min(255, target_color_hsv[2] + config.value_tolerance)
                 ])
                 
                 self.hsv_bounds.append({
@@ -149,7 +159,9 @@ class ColorTracker(BaseTracker):
             logger.info(f"  Marker {i+1}: {bounds['config'].marker_name}")
             logger.info(f"    BGR: {bounds['target_color_bgr']}")
             logger.info(f"    HSV: {bounds['target_color_hsv']}")
-            logger.info(f"    Tolerance: {bounds['config'].color_tolerance}")
+            logger.info(f"    Hue Tolerance: {bounds['config'].hue_tolerance}")
+            logger.info(f"    Saturation Tolerance: {bounds['config'].saturation_tolerance}")
+            logger.info(f"    Value Tolerance: {bounds['config'].value_tolerance}")
 
     def _clean_mask(self, mask: np.ndarray) -> np.ndarray:
         """Apply morphological operations to clean the mask."""
@@ -195,8 +207,26 @@ class ColorTracker(BaseTracker):
         Returns:
             ColorPatch for the largest detected object of this color, or None
         """
-        # Create mask for this specific color
-        mask = cv2.inRange(hsv_image, bounds['lower'], bounds['upper'])
+        lower = bounds['lower']
+        upper = bounds['upper']
+        target_h = bounds['target_color_hsv'][0]
+        tol_h = bounds['config'].hue_tolerance
+
+        # Check for Red wrap-around (Hue near 0 or 180)
+        if target_h < tol_h or target_h > (180 - tol_h):
+            mask1 = cv2.inRange(hsv_image, lower, upper)
+            
+            # Calculate the wrap-around bounds
+            lower2, upper2 = lower.copy(), upper.copy()
+            if target_h < tol_h: # Low end: catch the 170-180 range
+                lower2[0], upper2[0] = 180 - (tol_h - target_h), 180
+            else: # High end: catch the 0-10 range
+                lower2[0], upper2[0] = 0, target_h + tol_h - 180
+                
+            mask2 = cv2.inRange(hsv_image, lower2, upper2)
+            mask = cv2.bitwise_or(mask1, mask2)
+        else:
+            mask = cv2.inRange(hsv_image, lower, upper)
         
         # Clean the mask
         if self.use_morphological_ops:
@@ -210,13 +240,37 @@ class ColorTracker(BaseTracker):
         if not contours:
             return None
         
-        # Find the largest contour
-        largest_contour = max(contours, key=cv2.contourArea)
-        area = cv2.contourArea(largest_contour)
-        
-        # Filter by minimum area
-        if area < bounds['config'].min_contour_area:
+        # Filter contours
+        valid_candidates = []
+        MIN_CIRCULARITY = 0.1  # Hardcoded threshold
+        MIN_SOLIDITY = 0.25  # Hardcoded threshold
+
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            
+            if area < bounds['config'].min_contour_area:
+                continue
+
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter == 0:
+                continue
+            
+            # Circularity filter
+            circularity = 4 * np.pi * (area / (perimeter * perimeter))
+
+            # Solidity filter
+            hull = cv2.convexHull(contour)
+            hull_area = cv2.contourArea(hull)
+            solidity = float(area) / hull_area if hull_area > 0 else 0
+
+            if circularity >= MIN_CIRCULARITY and solidity >= MIN_SOLIDITY:
+                valid_candidates.append((contour, area))
+
+        if not valid_candidates:
             return None
+        
+        # Find the largest contour
+        largest_contour, area = max(valid_candidates, key=lambda x: x[1])
         
         # Calculate centroid
         moments = cv2.moments(largest_contour)
@@ -377,7 +431,9 @@ class ColorTracker(BaseTracker):
         marker_index: int, 
         enabled: Optional[bool] = None,
         target_color_bgr: Optional[Tuple[int, int, int]] = None,
-        color_tolerance: Optional[int] = None,
+        hue_tolerance: Optional[int] = None,
+        saturation_tolerance: Optional[int] = None,
+        value_tolerance: Optional[int] = None,
         marker_name: Optional[str] = None,
         min_contour_area: Optional[int] = None,
     ) -> None:
@@ -388,7 +444,9 @@ class ColorTracker(BaseTracker):
             marker_index: Index of marker to update (0-2)
             enabled: Whether the marker is enabled
             target_color_bgr: New target color in BGR
-            color_tolerance: New color tolerance
+            hue_tolerance: New hue tolerance
+            saturation_tolerance: New saturation tolerance
+            value_tolerance: New value tolerance
             marker_name: New marker name
             min_contour_area: New minimum contour area
         """
@@ -405,8 +463,14 @@ class ColorTracker(BaseTracker):
         if target_color_bgr is not None:
             config.target_color_bgr = target_color_bgr
         
-        if color_tolerance is not None:
-            config.color_tolerance = color_tolerance
+        if hue_tolerance is not None:
+            config.hue_tolerance = hue_tolerance
+
+        if saturation_tolerance is not None:
+            config.saturation_tolerance = saturation_tolerance
+
+        if value_tolerance is not None:
+            config.value_tolerance = value_tolerance
         
         if marker_name is not None:
             config.marker_name = marker_name
@@ -451,21 +515,27 @@ if __name__ == "__main__":
         ColorMarkerConfig(
             enabled=True,
             target_color_bgr=(0, 0, 255),  # Red
-            color_tolerance=30,
+            hue_tolerance=20,
+            saturation_tolerance=70,
+            value_tolerance=70,
             marker_name="red_marker",
             min_contour_area=100,
         ),
         ColorMarkerConfig(
             enabled=True,
             target_color_bgr=(0, 255, 0),  # Green
-            color_tolerance=25,
+            hue_tolerance=20,
+            saturation_tolerance=70,
+            value_tolerance=70,
             marker_name="green_marker",
             min_contour_area=80,
         ),
         ColorMarkerConfig(
             enabled=False,  # Disabled blue marker
             target_color_bgr=(255, 0, 0),
-            color_tolerance=30,
+            hue_tolerance=20,
+            saturation_tolerance=70,
+            value_tolerance=70,
             marker_name="blue_marker",
             min_contour_area=100,
         ),
