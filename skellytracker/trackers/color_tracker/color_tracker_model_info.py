@@ -21,11 +21,15 @@ class ColorTrackerModelInfo(ModelInfo):
     # Custom attributes for color tracker
     marker_configs = []
     use_morphological_ops = True
+    min_circularity = 0.5
+    min_solidity = 0.5
     
     def __init__(
         self,
         marker_configs: List[ColorMarkerConfig],
         use_morphological_ops: bool = True,
+        min_circularity: float = 0.5,
+        min_solidity: float = 0.5,
     ):
         # Get enabled marker names
         enabled_marker_names = [
@@ -38,3 +42,5 @@ class ColorTrackerModelInfo(ModelInfo):
         self.tracked_object_names = enabled_marker_names
         self.marker_configs = marker_configs
         self.use_morphological_ops = use_morphological_ops
+        self.min_circularity = min_circularity
+        self.min_solidity = min_solidity

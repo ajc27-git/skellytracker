@@ -29,6 +29,8 @@ class ColorPatch(BaseModel):
     centroid_y: int
     color_match_percentage: float
     marker_index: int  # Which marker this patch belongs to
+    circularity: float
+    solidity: float
 
 
 class ColorTracker(BaseTracker):
@@ -36,6 +38,8 @@ class ColorTracker(BaseTracker):
         self,
         marker_configs: Optional[List[ColorMarkerConfig]] = None,
         use_morphological_ops: bool = True,
+        min_circularity: float = 0.5,
+        min_solidity: float = 0.5,
     ):
         """
         Initialize a multi-color marker tracker.
@@ -43,6 +47,8 @@ class ColorTracker(BaseTracker):
         Args:
             marker_configs: List of configurations for up to 3 markers
             use_morphological_ops: Whether to use morphological operations to clean masks
+            min_circularity: Minimum circularity threshold (0-1)
+            min_solidity: Minimum solidity threshold (0-1)
         """
 
         # DEBUG: Log what colors we received
@@ -115,6 +121,8 @@ class ColorTracker(BaseTracker):
         
         self.marker_configs = marker_configs
         self.use_morphological_ops = use_morphological_ops
+        self.min_circularity = min_circularity
+        self.min_solidity = min_solidity
         
         # Get enabled marker names for tracked objects
         enabled_marker_names = [
@@ -242,8 +250,6 @@ class ColorTracker(BaseTracker):
         
         # Filter contours
         valid_candidates = []
-        MIN_CIRCULARITY = 0.1  # Hardcoded threshold
-        MIN_SOLIDITY = 0.25  # Hardcoded threshold
 
         for contour in contours:
             area = cv2.contourArea(contour)
@@ -263,14 +269,14 @@ class ColorTracker(BaseTracker):
             hull_area = cv2.contourArea(hull)
             solidity = float(area) / hull_area if hull_area > 0 else 0
 
-            if circularity >= MIN_CIRCULARITY and solidity >= MIN_SOLIDITY:
-                valid_candidates.append((contour, area))
+            if circularity >= self.min_circularity and solidity >= self.min_solidity:
+                valid_candidates.append((contour, area, circularity, solidity))
 
         if not valid_candidates:
             return None
         
         # Find the largest contour
-        largest_contour, area = max(valid_candidates, key=lambda x: x[1])
+        largest_contour, area, circularity, solidity = max(valid_candidates, key=lambda x: x[1])
         
         # Calculate centroid
         moments = cv2.moments(largest_contour)
@@ -289,6 +295,8 @@ class ColorTracker(BaseTracker):
             centroid_y=centroid_y,
             color_match_percentage=color_match_percentage,
             marker_index=marker_index,
+            circularity=circularity,
+            solidity=solidity,
         )
 
     def process_image(self, image: np.ndarray, **kwargs) -> Dict[str, TrackedObject]:
@@ -324,6 +332,8 @@ class ColorTracker(BaseTracker):
                 self.tracked_objects[marker_name].pixel_y = patch.centroid_y
                 self.tracked_objects[marker_name].extra["area"] = patch.area
                 self.tracked_objects[marker_name].extra["color_match_percentage"] = patch.color_match_percentage
+                self.tracked_objects[marker_name].extra["circularity"] = patch.circularity
+                self.tracked_objects[marker_name].extra["solidity"] = patch.solidity
                 self.tracked_objects[marker_name].extra["detected"] = True
         
         # Annotate the image
@@ -386,6 +396,10 @@ class ColorTracker(BaseTracker):
                 info_text = f"{marker_name}"
                 if "area" in tracked_object.extra:
                     info_text += f" A:{tracked_object.extra['area']:.0f}"
+                if "circularity" in tracked_object.extra:
+                    info_text += f" C:{tracked_object.extra['circularity']:.2f}"
+                if "solidity" in tracked_object.extra:
+                    info_text += f" S:{tracked_object.extra['solidity']:.2f}"
                 if "color_match_percentage" in tracked_object.extra:
                     info_text += f" M:{tracked_object.extra['color_match_percentage']:.0f}%"
                 
@@ -403,7 +417,7 @@ class ColorTracker(BaseTracker):
         legend_y = 30
         for i, bounds in enumerate(self.hsv_bounds):
             config = bounds['config']
-            status = "✓" if config.enabled else "✗"
+            status = "[x]" if config.enabled else "[ ]"
             
             # Draw color swatch
             color_swatch = np.zeros((20, 20, 3), dtype=np.uint8)
@@ -482,6 +496,8 @@ class ColorTracker(BaseTracker):
         self.__init__(
             marker_configs=self.marker_configs,
             use_morphological_ops=self.use_morphological_ops,
+            min_circularity=self.min_circularity,
+            min_solidity=self.min_solidity,
         )
         
         logger.info(f"Updated marker {marker_index}: {config.marker_name}")
@@ -497,6 +513,8 @@ class ColorTracker(BaseTracker):
         self.__init__(
             marker_configs=self.marker_configs,
             use_morphological_ops=self.use_morphological_ops,
+            min_circularity=self.min_circularity,
+            min_solidity=self.min_solidity,
         )
 
     def disable_all_markers(self) -> None:
@@ -505,6 +523,8 @@ class ColorTracker(BaseTracker):
             config.enabled = False
         self.__init__(
             marker_configs=self.marker_configs,
+            min_circularity=self.min_circularity,
+            min_solidity=self.min_solidity,
             use_morphological_ops=self.use_morphological_ops,
         )
 
